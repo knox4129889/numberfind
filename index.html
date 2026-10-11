@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>幾何彩色玻璃找數字遊戲</title>
+    <title>找數字遊戲</title>
     <style>
         * {
             box-sizing: border-box;
@@ -11,8 +11,8 @@
             padding: 0;
         }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #121212;
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #1a1a24;
             color: #ffffff;
             display: flex;
             flex-direction: column;
@@ -28,7 +28,8 @@
         h1 {
             font-size: 1.8rem;
             margin-bottom: 8px;
-            color: #ffca28;
+            color: #f39c12;
+            text-shadow: 0 0 10px rgba(243, 156, 18, 0.3);
         }
         .controls {
             display: flex;
@@ -38,38 +39,41 @@
             margin-bottom: 15px;
         }
         button {
-            padding: 8px 18px;
+            padding: 10px 22px;
             font-size: 1rem;
             font-weight: bold;
-            color: #121212;
-            background-color: #ffca28;
+            color: #12121c;
+            background-color: #f39c12;
             border: none;
             border-radius: 6px;
             cursor: pointer;
-            transition: background 0.2s, transform 0.1s;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
         button:hover {
-            background-color: #ffb300;
+            background-color: #e67e22;
+            transform: translateY(-1px);
         }
         button:active {
-            transform: scale(0.98);
+            transform: translateY(1px);
         }
         .stats {
             font-size: 1.1rem;
             background: rgba(255, 255, 255, 0.1);
-            padding: 6px 14px;
+            padding: 8px 16px;
             border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        /* 16:9 容器 */
         .game-wrapper {
             width: 100%;
-            max-width: 1000px;
+            max-width: 1100px;
             aspect-ratio: 16 / 9;
             position: relative;
             background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            border-radius: 12px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
             overflow: hidden;
+            border: 4px solid #111;
         }
         svg {
             width: 100%;
@@ -77,28 +81,33 @@
             display: block;
             user-select: none;
         }
+        /* 極致線條風：強化不規則格子的厚度與手繪感 */
         .cell-path {
             cursor: pointer;
-            stroke: #1a1a1a;
-            stroke-width: 3;
+            stroke: #111111;
+            stroke-width: 3.5;
             stroke-linejoin: round;
             fill: #ffffff;
-            transition: fill 0.2s ease;
+            transition: fill 0.2s ease, opacity 0.15s;
         }
         .cell-path:hover {
             opacity: 0.85;
         }
+        .hatch-pattern {
+            pointer-events: none;
+        }
         .cell-text {
-            font-size: 22px;
-            font-weight: bold;
-            fill: #1a1a1a;
+            font-size: 20px;
+            font-weight: 900;
+            fill: #111111;
             pointer-events: none;
             text-anchor: middle;
             dominant-baseline: central;
+            font-family: 'Impact', 'Arial Black', sans-serif;
         }
         .selected-text {
             fill: #ffffff !important;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            text-shadow: 0 2px 5px rgba(0,0,0,0.9);
         }
     </style>
 </head>
@@ -107,13 +116,20 @@
     <header>
         <h1>幾何彩色玻璃找數字遊戲</h1>
         <div class="controls">
-            <button id="resetBtn">重新洗牌數字</button>
-            <div class="stats">已找到: <span id="count">0</span> / 100</div>
+            <button id="resetBtn">🚀 生成全新幾何排版 (100格)</button>
+            <div class="stats">已點選: <span id="count">0</span> / 100</div>
         </div>
     </header>
 
     <div class="game-wrapper">
-        <svg id="gameSvg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet"></svg>
+        <svg id="gameSvg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet">
+            <defs>
+                <!-- 斜線陰影圖案 hatching pattern -->
+                <pattern id="hatch" width="15" height="15" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+                    <line x1="0" y1="0" x2="0" y2="15" stroke="#111111" stroke-width="2" />
+                </pattern>
+            </defs>
+        </svg>
     </div>
 
     <script>
@@ -125,9 +141,10 @@
 
         function getRandomColor() {
             const hue = Math.floor(Math.random() * 360);
-            return `hsl(${hue}, 75%, 45%)`;
+            return `hsl(${hue}, 80%, 45%)`;
         }
 
+        // Fisher-Yates 洗牌
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -136,68 +153,146 @@
             return array;
         }
 
-        // 生成模擬圖片構圖的幾何分割數據（10x10 幾何複合陣列）
-        function generateStainedGlassGrid() {
+        // 自然生成不規則 100 格的核心幾何剖分演算法 (Voronoi + 限制點)
+        function generateComplexStainedGlass() {
             const width = 1600;
             const height = 900;
+            const points = [];
             const cols = 10;
             const rows = 10;
-            const w = width / cols;
-            const h = height / rows;
+            const cellW = width / cols;
+            const cellH = height / rows;
 
-            const cells = [];
-
+            // 1. 生成帶有大量隨機偏移量的 10x10 控制點 (確保一定剛好 100 格)
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) {
-                    const x = c * w;
-                    const y = r * h;
-                    
-                    // 多樣化幾何切割類型：矩形、對角斜切三角形、圓弧拱門風格
-                    const styleType = (r + c) % 4;
-                    let pathD = '';
-                    let cx = x + w / 2;
-                    let cy = y + h / 2;
-
-                    if (styleType === 0) {
-                        pathD = `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
-                    } else if (styleType === 1) {
-                        pathD = `M ${x} ${y} L ${x + w} ${y} L ${x} ${y + h} Z`;
-                        cx = x + w / 3;
-                        cy = y + h / 3;
-                    } else if (styleType === 2) {
-                        pathD = `M ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
-                        cx = x + (w * 2) / 3;
-                        cy = y + (h * 2) / 3;
-                    } else {
-                        pathD = `M ${x} ${y + h} L ${x} ${y + h/2} A ${w/2} ${h/2} 0 0 1 ${x + w} ${y + h/2} L ${x + w} ${y + h} Z`;
-                        cy = y + (h * 0.65);
-                    }
-
-                    cells.push({ path: pathD, cx: cx, cy: cy });
+                    const jitterX = (Math.random() - 0.5) * cellW * 0.7;
+                    const jitterY = (Math.random() - 0.5) * cellH * 0.7;
+                    points.push({
+                        id: r * cols + c,
+                        x: Math.max(10, Math.min(width - 10, c * cellW + cellW/2 + jitterX)),
+                        y: Math.max(10, Math.min(height - 10, r * cellH + cellH/2 + jitterY))
+                    });
                 }
             }
+
+            // 2. 利用逼近法為每一個點生成無縫的幾何多邊形格子
+            const cells = [];
+            points.forEach((p) => {
+                let poly = [
+                    {x: 0, y: 0}, {x: width, y: 0},
+                    {x: width, y: height}, {x: 0, y: height}
+                ];
+
+                // 透過與其他 99 個點的垂直平分線進行多邊形切割
+                points.forEach((other) => {
+                    if (p.id === other.id) return;
+                    const dx = other.x - p.x;
+                    const dy = other.y - p.y;
+                    const mx = (p.x + other.x) / 2;
+                    const my = (p.y + other.y) / 2;
+
+                    const nextPoly = [];
+                    for (let i = 0; i < poly.length; i++) {
+                        const p1 = poly[i];
+                        const p2 = poly[(i + 1) % poly.length];
+
+                        const side1 = (p1.x - mx) * dx + (p1.y - my) * dy < 0;
+                        const side2 = (p2.x - mx) * dx + (p2.y - my) * dy < 0;
+
+                        if (side1) nextPoly.push(p1);
+
+                        if (side1 !== side2) {
+                            const t = ((mx - p1.x) * dx + (my - p1.y) * dy) / ((p2.x - p1.x) * dx + (p2.y - p1.y) * dy);
+                            nextPoly.push({
+                                x: p1.x + t * (p2.x - p1.x),
+                                y: p1.y + t * (p2.y - p1.y)
+                            });
+                        }
+                    }
+                    poly = nextPoly;
+                });
+
+                // 計算多邊形質心 (確保數字正中間)
+                let area = 0, cx = 0, cy = 0;
+                for (let i = 0; i < poly.length; i++) {
+                    const p1 = poly[i];
+                    const p2 = poly[(i + 1) % poly.length];
+                    const factor = (p1.x * p2.y - p2.x * p1.y);
+                    area += factor;
+                    cx += (p1.x + p2.x) * factor;
+                    cy += (p1.y + p2.y) * factor;
+                }
+                area = area / 2;
+                cx = cx / (6 * area);
+                cy = cy / (6 * area);
+
+                if (isNaN(cx) || isNaN(cy)) {
+                    cx = p.x;
+                    cy = p.y;
+                }
+
+                cells.push({ id: p.id, poly, cx, cy });
+            });
+
             return cells;
         }
 
+        // 將 100 格繪製為 SVG
         function renderGame() {
-            svg.innerHTML = '';
+            // 清空舊畫布
+            const defs = svg.querySelector('defs').outerHTML;
+            svg.innerHTML = defs;
             selectedCount = 0;
             countDisplay.textContent = selectedCount;
 
             const numbers = Array.from({ length: 100 }, (_, i) => i + 1);
             shuffle(numbers);
 
-            const gridCells = generateStainedGlassGrid();
+            const gridCells = generateComplexStainedGlass();
 
             gridCells.forEach((cell, i) => {
                 const num = numbers[i];
-
                 const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
+                // 動態轉成 SVG Path
+                let d = `M ${cell.poly[0].x} ${cell.poly[0].y}`;
+                for (let k = 1; k < cell.poly.length; k++) {
+                    d += ` L ${cell.poly[k].x} ${cell.poly[k].y}`;
+                }
+                d += ' Z';
+
+                // 底色 Path
                 const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', cell.path);
+                path.setAttribute('d', d);
                 path.setAttribute('class', 'cell-path');
 
+                // 為部分格子隨機添加圓形/圓弧視覺效果、或是條紋裝飾
+                let overlay = null;
+                const randStyle = Math.random();
+                
+                // 有機率為較大的格子加上 圓形 或是 條紋 hatching
+                if (randStyle < 0.12) {
+                    overlay = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    overlay.setAttribute('cx', cell.cx);
+                    overlay.setAttribute('cy', cell.cy);
+                    overlay.setAttribute('r', Math.min(45, Math.random() * 30 + 15));
+                    overlay.setAttribute('fill', 'url(#hatch)');
+                    overlay.setAttribute('stroke', '#111');
+                    overlay.setAttribute('stroke-width', '2');
+                    overlay.setAttribute('class', 'hatch-pattern');
+                } else if (randStyle > 0.12 && randStyle < 0.2) {
+                    // 半圓弧或圓環切分
+                    overlay = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const r = 40;
+                    overlay.setAttribute('d', `M ${cell.cx - r} ${cell.cy} A ${r} ${r} 0 0 1 ${cell.cx + r} ${cell.cy} Z`);
+                    overlay.setAttribute('fill', 'none');
+                    overlay.setAttribute('stroke', '#111');
+                    overlay.setAttribute('stroke-width', '3');
+                    overlay.setAttribute('class', 'hatch-pattern');
+                }
+
+                // 建立數字
                 const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 text.setAttribute('x', cell.cx);
                 text.setAttribute('y', cell.cy);
@@ -220,11 +315,12 @@
                     countDisplay.textContent = selectedCount;
 
                     if (selectedCount === 100) {
-                        setTimeout(() => alert('🎉 恭喜！你已點選完成所有 100 個數字！'), 100);
+                        setTimeout(() => alert('🎉 太厲害了！你已順利點完所有的幾何數字！'), 150);
                     }
                 });
 
                 g.appendChild(path);
+                if (overlay) g.appendChild(overlay);
                 g.appendChild(text);
                 svg.appendChild(g);
             });
