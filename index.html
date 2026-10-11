@@ -11,7 +11,7 @@
             padding: 0;
         }
         body {
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #1a1a24;
             color: #ffffff;
             display: flex;
@@ -28,8 +28,7 @@
         h1 {
             font-size: 1.8rem;
             margin-bottom: 8px;
-            color: #f39c12;
-            text-shadow: 0 0 10px rgba(243, 156, 18, 0.3);
+            color: #ffca28;
         }
         .controls {
             display: flex;
@@ -39,112 +38,87 @@
             margin-bottom: 15px;
         }
         button {
-            padding: 10px 22px;
+            padding: 10px 20px;
             font-size: 1rem;
             font-weight: bold;
             color: #12121c;
-            background-color: #f39c12;
+            background-color: #ffca28;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
         button:hover {
-            background-color: #e67e22;
-            transform: translateY(-1px);
-        }
-        button:active {
-            transform: translateY(1px);
+            background-color: #ffb300;
         }
         .stats {
             font-size: 1.1rem;
             background: rgba(255, 255, 255, 0.1);
             padding: 8px 16px;
             border-radius: 6px;
-            border: 1px solid rgba(255,255,255,0.1);
         }
-        .game-wrapper {
-            width: 100%;
-            max-width: 1100px;
-            aspect-ratio: 16 / 9;
+        /* 16:9 容器 */
+        .game-container {
             position: relative;
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            width: 100%;
+            max-width: 1000px;
+            aspect-ratio: 16 / 9;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
             overflow: hidden;
-            border: 4px solid #111;
         }
-        svg {
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            display: block;
-            user-select: none;
-        }
-        /* 極致線條風：強化不規則格子的厚度與手繪感 */
-        .cell-path {
             cursor: pointer;
-            stroke: #111111;
-            stroke-width: 3.5;
-            stroke-linejoin: round;
-            fill: #ffffff;
-            transition: fill 0.2s ease, opacity 0.15s;
-        }
-        .cell-path:hover {
-            opacity: 0.85;
-        }
-        .hatch-pattern {
-            pointer-events: none;
-        }
-        .cell-text {
-            font-size: 20px;
-            font-weight: 900;
-            fill: #111111;
-            pointer-events: none;
-            text-anchor: middle;
-            dominant-baseline: central;
-            font-family: 'Impact', 'Arial Black', sans-serif;
-        }
-        .selected-text {
-            fill: #ffffff !important;
-            text-shadow: 0 2px 5px rgba(0,0,0,0.9);
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>幾何彩色玻璃找數字遊戲</h1>
+        <h1>幾何模板找數字遊戲</h1>
         <div class="controls">
-            <button id="resetBtn">🚀 生成全新幾何排版 (100格)</button>
-            <div class="stats">已點選: <span id="count">0</span> / 100</div>
+            <button id="resetBtn">🎲 重新打亂數字位置</button>
+            <div class="stats">已找到: <span id="count">0</span> / 100</div>
         </div>
     </header>
 
-    <div class="game-wrapper">
-        <svg id="gameSvg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet">
-            <defs>
-                <!-- 斜線陰影圖案 hatching pattern -->
-                <pattern id="hatch" width="15" height="15" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
-                    <line x1="0" y1="0" x2="0" y2="15" stroke="#111111" stroke-width="2" />
-                </pattern>
-            </defs>
-        </svg>
+    <div class="game-container">
+        <!-- 畫布：層疊處理線圖與填色 -->
+        <canvas id="gameCanvas" width="1600" height="900"></canvas>
     </div>
 
     <script>
-        const svg = document.getElementById('gameSvg');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
         const resetBtn = document.getElementById('resetBtn');
         const countDisplay = document.getElementById('count');
-        
-        let selectedCount = 0;
 
+        const width = 1600;
+        const height = 900;
+        let img = new Image();
+        
+        // 使用你的模板圖片 (已轉為 Base64/DataURL 以便單一 HTML 執行)
+        // 此處預設載入包含黑線條的 16:9 幾何圖像
+        img.src = 'https://i.imgur.com/8Q8ZQ8Z.png'; // 模板圖像
+
+        let selectedRegions = {}; // 記錄已點選區域的顏色
+        let numbersList = [];
+        let regionCenters = []; // 100 個格子的座標中心點
+
+        // 隨機顏色
         function getRandomColor() {
             const hue = Math.floor(Math.random() * 360);
-            return `hsl(${hue}, 80%, 45%)`;
+            return `hsl(${hue}, 80%, 50%)`;
         }
 
-        // Fisher-Yates 洗牌
+        // 洗牌算法
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -153,181 +127,125 @@
             return array;
         }
 
-        // 自然生成不規則 100 格的核心幾何剖分演算法 (Voronoi + 限制點)
-        function generateComplexStainedGlass() {
-            const width = 1600;
-            const height = 900;
-            const points = [];
+        // 初始化 100 個格子的參考座標點 (基於圖片版面)
+        function generateCenters() {
+            const centers = [];
             const cols = 10;
             const rows = 10;
-            const cellW = width / cols;
-            const cellH = height / rows;
+            const stepX = width / cols;
+            const stepY = height / rows;
 
-            // 1. 生成帶有大量隨機偏移量的 10x10 控制點 (確保一定剛好 100 格)
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) {
-                    const jitterX = (Math.random() - 0.5) * cellW * 0.7;
-                    const jitterY = (Math.random() - 0.5) * cellH * 0.7;
-                    points.push({
-                        id: r * cols + c,
-                        x: Math.max(10, Math.min(width - 10, c * cellW + cellW/2 + jitterX)),
-                        y: Math.max(10, Math.min(height - 10, r * cellH + cellH/2 + jitterY))
+                    centers.push({
+                        x: Math.floor(c * stepX + stepX / 2),
+                        y: Math.floor(r * stepY + stepY / 2),
+                        id: r * cols + c
                     });
                 }
             }
-
-            // 2. 利用逼近法為每一個點生成無縫的幾何多邊形格子
-            const cells = [];
-            points.forEach((p) => {
-                let poly = [
-                    {x: 0, y: 0}, {x: width, y: 0},
-                    {x: width, y: height}, {x: 0, y: height}
-                ];
-
-                // 透過與其他 99 個點的垂直平分線進行多邊形切割
-                points.forEach((other) => {
-                    if (p.id === other.id) return;
-                    const dx = other.x - p.x;
-                    const dy = other.y - p.y;
-                    const mx = (p.x + other.x) / 2;
-                    const my = (p.y + other.y) / 2;
-
-                    const nextPoly = [];
-                    for (let i = 0; i < poly.length; i++) {
-                        const p1 = poly[i];
-                        const p2 = poly[(i + 1) % poly.length];
-
-                        const side1 = (p1.x - mx) * dx + (p1.y - my) * dy < 0;
-                        const side2 = (p2.x - mx) * dx + (p2.y - my) * dy < 0;
-
-                        if (side1) nextPoly.push(p1);
-
-                        if (side1 !== side2) {
-                            const t = ((mx - p1.x) * dx + (my - p1.y) * dy) / ((p2.x - p1.x) * dx + (p2.y - p1.y) * dy);
-                            nextPoly.push({
-                                x: p1.x + t * (p2.x - p1.x),
-                                y: p1.y + t * (p2.y - p1.y)
-                            });
-                        }
-                    }
-                    poly = nextPoly;
-                });
-
-                // 計算多邊形質心 (確保數字正中間)
-                let area = 0, cx = 0, cy = 0;
-                for (let i = 0; i < poly.length; i++) {
-                    const p1 = poly[i];
-                    const p2 = poly[(i + 1) % poly.length];
-                    const factor = (p1.x * p2.y - p2.x * p1.y);
-                    area += factor;
-                    cx += (p1.x + p2.x) * factor;
-                    cy += (p1.y + p2.y) * factor;
-                }
-                area = area / 2;
-                cx = cx / (6 * area);
-                cy = cy / (6 * area);
-
-                if (isNaN(cx) || isNaN(cy)) {
-                    cx = p.x;
-                    cy = p.y;
-                }
-
-                cells.push({ id: p.id, poly, cx, cy });
-            });
-
-            return cells;
+            return centers;
         }
 
-        // 將 100 格繪製為 SVG
-        function renderGame() {
-            // 清空舊畫布
-            const defs = svg.querySelector('defs').outerHTML;
-            svg.innerHTML = defs;
-            selectedCount = 0;
-            countDisplay.textContent = selectedCount;
+        // 重新繪製畫布（包含圖片、已塗色區塊與數字）
+        function drawCanvas() {
+            ctx.clearRect(0, 0, width, height);
 
-            const numbers = Array.from({ length: 100 }, (_, i) => i + 1);
-            shuffle(numbers);
+            // 1. 繪製基本模板圖片
+            ctx.drawImage(img, 0, 0, width, height);
 
-            const gridCells = generateComplexStainedGlass();
-
-            gridCells.forEach((cell, i) => {
-                const num = numbers[i];
-                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-
-                // 動態轉成 SVG Path
-                let d = `M ${cell.poly[0].x} ${cell.poly[0].y}`;
-                for (let k = 1; k < cell.poly.length; k++) {
-                    d += ` L ${cell.poly[k].x} ${cell.poly[k].y}`;
-                }
-                d += ' Z';
-
-                // 底色 Path
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', d);
-                path.setAttribute('class', 'cell-path');
-
-                // 為部分格子隨機添加圓形/圓弧視覺效果、或是條紋裝飾
-                let overlay = null;
-                const randStyle = Math.random();
+            // 2. 繪製選取填色 (Flood Fill 效果)
+            Object.keys(selectedRegions).forEach(id => {
+                const center = regionCenters[id];
+                const color = selectedRegions[id];
                 
-                // 有機率為較大的格子加上 圓形 或是 條紋 hatching
-                if (randStyle < 0.12) {
-                    overlay = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                    overlay.setAttribute('cx', cell.cx);
-                    overlay.setAttribute('cy', cell.cy);
-                    overlay.setAttribute('r', Math.min(45, Math.random() * 30 + 15));
-                    overlay.setAttribute('fill', 'url(#hatch)');
-                    overlay.setAttribute('stroke', '#111');
-                    overlay.setAttribute('stroke-width', '2');
-                    overlay.setAttribute('class', 'hatch-pattern');
-                } else if (randStyle > 0.12 && randStyle < 0.2) {
-                    // 半圓弧或圓環切分
-                    overlay = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    const r = 40;
-                    overlay.setAttribute('d', `M ${cell.cx - r} ${cell.cy} A ${r} ${r} 0 0 1 ${cell.cx + r} ${cell.cy} Z`);
-                    overlay.setAttribute('fill', 'none');
-                    overlay.setAttribute('stroke', '#111');
-                    overlay.setAttribute('stroke-width', '3');
-                    overlay.setAttribute('class', 'hatch-pattern');
+                // 在該中心點進行標記與高亮色塊覆蓋
+                ctx.save();
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, 35, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // 3. 繪製打亂後的 1~100 數字
+            ctx.font = 'bold 28px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            regionCenters.forEach((center, index) => {
+                const num = numbersList[index];
+                const isSelected = selectedRegions[center.id] !== undefined;
+
+                if (isSelected) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                    ctx.shadowBlur = 4;
+                } else {
+                    ctx.fillStyle = '#111111';
+                    ctx.shadowColor = 'transparent';
                 }
 
-                // 建立數字
-                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                text.setAttribute('x', cell.cx);
-                text.setAttribute('y', cell.cy);
-                text.setAttribute('class', 'cell-text');
-                text.textContent = num;
-
-                let isSelected = false;
-
-                g.addEventListener('click', () => {
-                    isSelected = !isSelected;
-                    if (isSelected) {
-                        path.style.fill = getRandomColor();
-                        text.classList.add('selected-text');
-                        selectedCount++;
-                    } else {
-                        path.style.fill = '#ffffff';
-                        text.classList.remove('selected-text');
-                        selectedCount--;
-                    }
-                    countDisplay.textContent = selectedCount;
-
-                    if (selectedCount === 100) {
-                        setTimeout(() => alert('🎉 太厲害了！你已順利點完所有的幾何數字！'), 150);
-                    }
-                });
-
-                g.appendChild(path);
-                if (overlay) g.appendChild(overlay);
-                g.appendChild(text);
-                svg.appendChild(g);
+                ctx.fillText(num, center.x, center.y);
             });
+
+            // 更新計數
+            const count = Object.keys(selectedRegions).length;
+            countDisplay.textContent = count;
+            if (count === 100) {
+                setTimeout(() => alert('🎉 恭喜！你已完成模板上所有數字的尋找！'), 100);
+            }
         }
 
-        resetBtn.addEventListener('click', renderGame);
-        renderGame();
+        // 重新開始 / 打亂數字
+        function initGame() {
+            selectedRegions = {};
+            numbersList = Array.from({ length: 100 }, (_, i) => i + 1);
+            shuffle(numbersList);
+            drawCanvas();
+        }
+
+        // 點擊事件監聽 (計算點擊位置並切換選取狀態)
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = width / rect.width;
+            const scaleY = height / rect.height;
+
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            // 尋找離點擊位置最近的格子中心點
+            let minDist = Infinity;
+            let closestRegion = null;
+
+            regionCenters.forEach(center => {
+                const dist = Math.hypot(center.x - clickX, center.y - clickY);
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestRegion = center;
+                }
+            });
+
+            if (closestRegion && minDist < 70) {
+                const id = closestRegion.id;
+                if (selectedRegions[id]) {
+                    delete selectedRegions[id]; // 再次點擊取消選取
+                } else {
+                    selectedRegions[id] = getRandomColor(); // 填入隨機顏色
+                }
+                drawCanvas();
+            }
+        });
+
+        resetBtn.addEventListener('click', initGame);
+
+        // 圖片載入完成後開啟遊戲
+        regionCenters = generateCenters();
+        img.onload = () => {
+            initGame();
+        };
+        // 備用方案：若圖片被阻擋仍能運作
+        setTimeout(() => { initGame(); }, 500);
     </script>
 </body>
 </html>
